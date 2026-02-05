@@ -3,6 +3,10 @@ FROM composer:latest AS composer
 FROM php:${PHP}-apache
 COPY --from=composer /usr/bin/composer /usr/local/bin/composer
 
+# FIX RAILWAY MPM ERROR - PRIMERO
+RUN a2dismod mpm_event mpm_worker 2>/dev/null || true && \
+    a2enmod mpm_prefork rewrite
+
 RUN apt-get update && apt-get install -y \
     libssl-dev \
     libfreetype6-dev \
@@ -10,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libwebp-dev \
     libgd-dev \
+    libpq-dev \
     libzip-dev \
     zip unzip \
     rsync \
@@ -18,14 +23,13 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     exiftool \
     exiftran \
-    && a2enmod rewrite && a2enmod ssl && a2enmod socache_shmcb \
+    && a2enmod ssl socache_shmcb \
     && docker-php-ext-configure gd --with-freetype=/usr/include/ --with-jpeg=/usr/include/ --with-webp=/usr/include/ \
     && docker-php-ext-configure opcache --enable-opcache \
     && docker-php-ext-configure ftp --with-openssl-dir=/usr \
     && docker-php-ext-configure exif \
-    && docker-php-ext-install -j$(nproc) exif gd pdo_mysql zip opcache bcmath ftp intl \
-    && pecl install imagick \
-    && pecl install redis \
+    && docker-php-ext-install -j$(nproc) exif gd pdo_pgsql pdo_mysql zip opcache bcmath ftp intl \
+    && pecl install imagick redis \
     && docker-php-ext-enable exif imagick opcache redis \
     && php -m \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -75,3 +79,8 @@ RUN mkdir -p images/_assets \
 COPY --chown=www-data chevereto/ .
 
 RUN chown www-data: . -R && ls -la
+
+# ⭐ RAILWAY MPM FIX DEFINITIVO ⭐
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
